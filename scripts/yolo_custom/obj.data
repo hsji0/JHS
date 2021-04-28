@@ -1,0 +1,5 @@
+classes=3
+train=D:/Public/JHS/Splash/OD/yolo/train.txt
+test=D:/Public/JHS/Splash/OD/yolo/test.txt
+names=D:/Public/JHS/Splash/OD/yolo/obj.names
+backup=D:/Public/JHS/Splash/OD/yolo/backups
