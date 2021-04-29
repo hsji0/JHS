@@ -222,12 +222,24 @@ def main(_argv):
             data = it.get_next()
 
             ## check input train images
+
             # image_data = data[0]
-            # print("data[0] shape :{}".format(np.array(image_data).shape))
-            # print("data[1] shape :{}".format(np.array(data[1]).shape))
-            # for i in range(32):
-            #     check = np.array(image_data[i]).reshape(640,640,3)
-            #     cv2.imshow("img", check)
+            # label_data = data[1]
+            # bboxes_list = label_data[0][1]
+            #
+            # print("bboxes_list",bboxes_list)
+            # print("bboxes_list shape", np.array(bboxes_list).shape)
+            # for batch_idx, bboxes in enumerate(bboxes_list):
+            #     check = np.array(image_data[batch_idx]).reshape(640, 640, 3)
+            #     for bbox in bboxes:
+            #         # print("bbox:{}".format(bbox))
+            #         half_h = bbox[3] / 2
+            #         half_w = bbox[2] / 2
+            #
+            #         # bbox_upper_left = (bbox[0])
+            #         if np.sum(bbox) > 0:
+            #             cv2.rectangle(check, (bbox[0] - half_w, bbox[1] - half_h),(bbox[0] + half_w,bbox[1]+half_h), color=(0,255,0), thickness=3)
+            #     cv2.imshow("check_aug", check)
             #     cv2.waitKey(0)
             #     cv2.destroyAllWindows()
 

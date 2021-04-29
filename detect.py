@@ -14,7 +14,6 @@ import cv2
 import numpy as np
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
-from core.utils import nms
 import os
 
 """
@@ -35,12 +34,12 @@ flags.DEFINE_float('score', 0.25, 'score threshold')
 # flags.DEFINE_string('weights', r'D:\ckeckpoint\210413_custom','path to weights file')
 
 # detection시 수정
-flags.DEFINE_string('weights', r"D:/ckeckpoint",'path to weights file')
-flags.DEFINE_string('save_result_img', r"./data/detection/nmserr", 'folder to save result')
+flags.DEFINE_string('weights', r"D:/checkpoint-epoch5000",'path to weights file')
+flags.DEFINE_string('save_result_img', r"./data/detection/tfdata", 'folder to save result')
 flags.DEFINE_boolean('use_trainres', True, "false for detect using converted weight(weights->pb) / True for training from scratch")
 flags.DEFINE_integer('size', 640, 'resize images to')
 flags.DEFINE_integer('num_detection_layer', 1, "3:yolov4 2:yolo-tiny 1:custom model")  # 디폴트 custom model
-flags.DEFINE_string('image', r"./data/detection/nmserr", 'path to input image (.bmp면 하나만 detect ,폴더명이면 해당 폴더 이미지 전부')
+flags.DEFINE_string('image', r"./data/detection", 'path to input image (.bmp면 하나만 detect ,폴더명이면 해당 폴더 이미지 전부')
 flags.DEFINE_boolean('save_multiple', True, 'detection 결과 한꺼번에 여러개 보려면 True')
 # flags.DEFINE_string('output', r"...\test_result", 'path to output image')
 
@@ -238,9 +237,12 @@ def main(_argv):
         pred_bbox = infer(batch_data)
 
         image_size = 640
+
         for key, value in pred_bbox.items():
+            print("key:{}".format(key))
             # for custom model
-            if FLAGS.use_trainres == True and key == "tf_op_layer_concat_10":   # key는 model.summary의 마지막 layer
+            if FLAGS.use_trainres == True and key[:5] == "tf_op":   # key는 model.summary의 마지막 layer
+
                 if FLAGS.save_multiple == True:
                     for idx in range(len(images_data)):
                         bboxes_coord, bboxes_scores, bboxes_classes = nms(tf.expand_dims(value[idx], axis=0), num_classes=cfg.YOLO.NUM_CLASSES)
