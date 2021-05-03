@@ -190,6 +190,7 @@ class DatasetTF(object):
     def _load_images(self, image_fullpath):
         img = tf.io.read_file(image_fullpath)
         img = tf.io.decode_image(img, channels=0)
+        # 여기 체크해보기
         img = tf.cond(tf.shape(img)[2] == 1 and self._input.c == 3, lambda: tf.image.grayscale_to_rgb(img), lambda: img)
         img = tf.cond(tf.shape(img)[2] == 3 and self._input.c == 1, lambda: tf.image.rgb_to_grayscale(img), lambda: img)
         # img = tf.cond(len(tf.shape(img)) == 2, lambda: tf.expand_dims(img, -1), lambda:img)
@@ -219,6 +220,7 @@ class DatasetTF(object):
         img = tf.image.resize(img, (self._input.h, self._input.w))
 
         ## add more preprocessing here
+        # img /= 255.0
         ## ex) img = tf.image.per_image_standarization(img)
         return img
 
@@ -290,73 +292,64 @@ class DatasetTF(object):
 
     @tf.function
     def random_horizontal_flip(self, image, bboxes):
-        if random.random() < 0.5:
-            w = self.input_sizes
-            image = image[:, ::-1, :]
-            new_right = w - bboxes[:,0:1]
-            new_left = w - bboxes[:,2:3]
-            bboxes = tf.concat([new_left, bboxes[:, 1:2], new_right, bboxes[:, 3:5]], axis=1)
+        # if random.random() < 0.5:
+        w = self.input_sizes
+        image = image[:, ::-1, :]
+        new_right = w - bboxes[:,0:1]
+        new_left = w - bboxes[:,2:3]
+        bboxes = tf.concat([new_left, bboxes[:, 1:2], new_right, bboxes[:, 3:5]], axis=1)
         return image, bboxes
-
-    # @tf.function
-    # def random_vertical_flip(self, image, bboxes):
-    #     if random.random() < 0.5:
-    #         h = self.input_sizes
-    #         image = image[:, :, ::-1]
-    #           new_up = h - bboxes[:,1:2]
-    #           new_down = h - bboxes[:,3:4]
-    #           bboxes = tf.concat([bboxes[:,0:1], new_up, bboxes[:,2:3],new_down, bboxes[:,4:5]] axis=1)
-    #     return image, bboxes
 
     @tf.function
     def random_crop(self, image, bboxes):  # 일반적으로 사람, 물건 등 detection 문제에서는 성능 높을지 몰라도 거의 똑같이 생긴 웨이퍼 등에도 적용해야 할지?
-        if random.random() < 0.5:
-            h, w, ch = tf.keras.backend.int_shape(image)
-            max_bbox = tf.concat(
-                [
-                tf.reduce_min(bboxes[:,0:2], axis=0),
-                tf.reduce_max(bboxes[:,2:4], axis=0),
-                ],
-                axis=-1,
-            )
+        # if random.random() < 0.5:
+        h, w, ch = tf.keras.backend.int_shape(image)
+        max_bbox = tf.concat(
+            [
+            tf.reduce_min(bboxes[:,0:2], axis=0),
+            tf.reduce_max(bboxes[:,2:4], axis=0),
+            ],
+            axis=-1,
+        )
 
-            max_l_trans = max_bbox[0]
-            max_u_trans = max_bbox[1]
-            max_r_trans = w - max_bbox[2]
-            max_d_trans = h - max_bbox[3]
+        max_l_trans = max_bbox[0]
+        max_u_trans = max_bbox[1]
+        max_r_trans = w - max_bbox[2]
+        max_d_trans = h - max_bbox[3]
 
-            crop_xmin = tf.maximum(
-                0, tf.cast(max_bbox[0] - tf.random.uniform([], minval=0, maxval=max_l_trans), dtype=tf.int32)
-            )
-            crop_ymin = tf.maximum(
-                0, tf.cast(max_bbox[1] - tf.random.uniform([], minval=0, maxval=max_u_trans), dtype=tf.int32)
-            )
-            crop_xmax = tf.minimum(
-                w, tf.cast(max_bbox[2] + tf.random.uniform([], minval=0, maxval=max_r_trans), dtype=tf.int32)
-            )
-            crop_ymax = tf.minimum(
-                h, tf.cast(max_bbox[3] + tf.random.uniform([], minval=0, maxval=max_d_trans), dtype=tf.int32)
-            )
+        crop_xmin = tf.maximum(
+            0, tf.cast(max_bbox[0] - tf.random.uniform([], minval=0, maxval=max_l_trans), dtype=tf.int32)
+        )
+        crop_ymin = tf.maximum(
+            0, tf.cast(max_bbox[1] - tf.random.uniform([], minval=0, maxval=max_u_trans), dtype=tf.int32)
+        )
+        crop_xmax = tf.minimum(
+            w, tf.cast(max_bbox[2] + tf.random.uniform([], minval=0, maxval=max_r_trans), dtype=tf.int32)
+        )
+        crop_ymax = tf.minimum(
+            h, tf.cast(max_bbox[3] + tf.random.uniform([], minval=0, maxval=max_d_trans), dtype=tf.int32)
+        )
 
-            image = image[crop_ymin:crop_ymax, crop_xmin:crop_xmax]
+        image = image[crop_ymin:crop_ymax, crop_xmin:crop_xmax]
 
-            bboxes_list = []
+        bboxes_list = []
 
-            bboxes_list.append(tf.subtract(bboxes[:, 0:1], tf.maximum(tf.cast(0., dtype=tf.float32), tf.subtract(tf.cast(crop_xmin, dtype=tf.float32), bboxes[:,0:1]))))
-            bboxes_list.append(tf.subtract(bboxes[:, 1:2], tf.maximum(tf.cast(0., dtype=tf.float32), tf.subtract(tf.cast(crop_ymin, dtype=tf.float32), bboxes[:,1:2]))))
-            bboxes_list.append(tf.subtract(bboxes[:, 2:3], tf.maximum(tf.cast(0., dtype=tf.float32), tf.subtract(bboxes[:,2:3], tf.cast(crop_xmax, dtype=tf.float32)))))
-            bboxes_list.append(tf.subtract(bboxes[:, 3:4], tf.maximum(tf.cast(0., dtype=tf.float32), tf.subtract(bboxes[:,3:4], tf.cast(crop_ymax, dtype=tf.float32)))))
-            bboxes_list.append(bboxes[:,4:5]) # class label
+        bboxes_list.append(tf.subtract(bboxes[:, 0:1], tf.maximum(tf.cast(0., dtype=tf.float32), tf.subtract(tf.cast(crop_xmin, dtype=tf.float32), bboxes[:,0:1]))))
+        bboxes_list.append(tf.subtract(bboxes[:, 1:2], tf.maximum(tf.cast(0., dtype=tf.float32), tf.subtract(tf.cast(crop_ymin, dtype=tf.float32), bboxes[:,1:2]))))
+        bboxes_list.append(tf.subtract(bboxes[:, 2:3], tf.maximum(tf.cast(0., dtype=tf.float32), tf.subtract(bboxes[:,2:3], tf.cast(crop_xmax, dtype=tf.float32)))))
+        bboxes_list.append(tf.subtract(bboxes[:, 3:4], tf.maximum(tf.cast(0., dtype=tf.float32), tf.subtract(bboxes[:,3:4], tf.cast(crop_ymax, dtype=tf.float32)))))
+        bboxes_list.append(bboxes[:,4:5]) # class label
 
-            bboxes = tf.concat(bboxes_list, axis=1)
+        bboxes = tf.concat(bboxes_list, axis=1)
 
-            # tf.print("cropped_height", cropped_height, "cropped_width", cropped_width, 'padded___', height+cropped_height, width+cropped_width)
-            paddings =  [[crop_ymin, h - crop_ymax], [crop_xmin, w - crop_xmax], [0,0]]  #tf.constant()
-            # print("paddings", paddings)
-            # print("crop_ymin, crop_ymax", crop_ymin, crop_ymax)
-            # print("crop_xmin, crop_xmax", crop_xmin, crop_xmax)
-            image = tf.pad(image, paddings, mode='CONSTANT', constant_values=0)
-            # tf.print("image shape", tf.shape(image))
+        # tf.print("cropped_height", cropped_height, "cropped_width", cropped_width, 'padded___', height+cropped_height, width+cropped_width)
+        paddings =  [[crop_ymin, h - crop_ymax], [crop_xmin, w - crop_xmax], [0,0]]  #tf.constant()
+        # print("paddings", paddings)
+        # print("crop_ymin, crop_ymax", crop_ymin, crop_ymax)
+        # print("crop_xmin, crop_xmax", crop_xmin, crop_xmax)
+
+        image = tf.pad(image, paddings, mode='CONSTANT', constant_values=0)
+        # tf.print("image shape", tf.shape(image))
         return image, bboxes
 
     @tf.function
@@ -414,14 +407,6 @@ class DatasetTF(object):
         # label[0].shape == (20,20,3,8)
 
         bboxes_xywh = [np.zeros((self.max_bbox_per_scale, 4)) for _ in range(self.num_detection_layers)]
-
-        check = np.array(image).reshape((640,640,3))
-        # for bbox in bboxes:
-        #     print("bbox:::",bbox)
-        #     cv2.rectangle(check, (bbox[0],bbox[1]), (bbox[2],bbox[3]), color=(0,255,0), thickness=3)
-        # cv2.imshow("mbbox", check)
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
 
         # len(bboxes_xywh) == 1
         # bboxes_xywh[0].shape == (150,4)
@@ -518,8 +503,7 @@ class DatasetTF(object):
         elif cfg.YOLO.NUM_YOLOLAYERS == 1:
             label_mbbox = label
             mbboxes = bboxes_xywh
-            # print("mbboxes:{}".format(mbboxes))
-            return (tf.cast(image, tf.float32), tf.cast(tf.squeeze(label_mbbox), tf.float32), tf.cast(tf.squeeze(mbboxes), tf.float32),)
+            return (tf.cast(image, tf.float32), tf.cast(label_mbbox, tf.float32), tf.cast(mbboxes, tf.float32))
 
     def __len__(self):
         return self.num_batchs
