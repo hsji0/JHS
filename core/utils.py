@@ -122,6 +122,34 @@ def get_anchors(anchors_path):  # 디폴트 ver=2  (custom model)
     else:
         return anchors.reshape(1, 3, 2)
 
+
+def image_preprocess_convertedw(image, target_size, gt_boxes=None):
+    ih, iw = target_size
+    h, w, ch = image.shape
+    if ch == 1:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+
+    scale = min(iw / w, ih / h)
+    nw, nh = int(scale * w), int(scale * h)
+    image_resized = cv2.resize(image, (nw, nh))
+
+    image_paded = np.full(shape=[ih, iw, 3], fill_value=128.0)
+    dw, dh = (iw - nw) // 2, (ih - nh) // 2
+
+    image_paded[dh:nh + dh, dw:nw + dw, :] = image_resized
+    image_paded = image_paded / 255.
+
+    if gt_boxes is None:
+        return image_paded
+    else:
+        gt_boxes[:, [0,]] = gt_boxes[:, [0,]] * scale + dw
+        gt_boxes[:, [2,]] = gt_boxes[:, [2,]] * scale
+        gt_boxes[:, [1,]] = gt_boxes[:, [1,]] * scale + dh
+        gt_boxes[:, [3,]] = gt_boxes[:, [3,]] * scale
+        # gt_boxes[:, [0, 2]] = gt_boxes[:, [0, 2]] * scale + dw
+        # gt_boxes[:, [1, 3]] = gt_boxes[:, [1, 3]] * scale + dh
+        return image_paded, gt_boxes
+
 def image_preprocess(image, target_size, gt_boxes=None):
 
     ih, iw    = target_size
@@ -134,6 +162,7 @@ def image_preprocess(image, target_size, gt_boxes=None):
     image_paded = np.full(shape=[ih, iw, 3], fill_value=128.0)
     dw, dh = (iw - nw) // 2, (ih-nh) // 2
     image_paded[dh:nh+dh, dw:nw+dw, :] = image_resized
+
     image_paded = image_paded / 255.
 
     if gt_boxes is None:
@@ -152,16 +181,47 @@ def load_multiple_img(image_path, input_size, is_multiple):
         images_data = []
         for idx, path in enumerate(image_path):
             original_image = cv2.imread(path)
+            original_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
+            original_image = np.array(original_image)
+            ih, iw, channels = original_image.shape
+
+            if channels == 1:
+                original_image = cv2.cvtColor(original_image, cv2.COLOR_GRAY2BGR)
+
             image_data = image_preprocess(np.copy(original_image), [input_size, input_size])
             images_data.append(image_data)
         images_data = np.asarray(images_data).astype(np.float32)
     else:
         original_image = cv2.imread(image_path)
+
         image_data = image_preprocess(np.copy(original_image), [input_size, input_size])
         images_data = [image_data]
         images_data = np.asarray(images_data).astype(np.float32)
     return image_path, images_data
 
+# from PIL import Image
+# def load_multiple_img_converted(image_path, input_size, is_multiple):
+#     extensions = ['bmp', 'jpg', 'jpeg', 'png']
+#     isfolder = os.path.basename(image_path)
+#     if is_multiple:
+#         image_path = [os.path.join(image_path, path) for path in os.listdir(image_path) if any(path.endswith(ext) for ext in extensions)]
+#         images_data = []
+#         for idx, path in enumerate(image_path):
+#             original_image = Image.open(path)
+#             original_image = np.array(original_image)
+#             _, _, ch = original_image.shape
+#             if ch == 1:
+#                 cv2.cvtColor(original_image, cv2.COLOR_GRAY2BGR)
+#             # original_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
+#             image_data = image_preprocess(np.copy(original_image), [input_size, input_size])
+#             images_data.append(image_data)
+#         images_data = np.asarray(images_data).astype(np.float32)
+#     else:
+#         original_image = cv2.imread(image_path)
+#         image_data = image_preprocess(np.copy(original_image), [input_size, input_size])
+#         images_data = [image_data]
+#         images_data = np.asarray(images_data).astype(np.float32)
+#     return image_path, images_data
 
 # def compute_map(pred, target_bboxes, num_classes):
 #     """
@@ -438,6 +498,7 @@ def draw_bbox_convertedw(original_image, image_size, pred_coord , pred_classes, 
         pred_class = int(pred_classes[idx][0])
         pred_score = pred_scores[idx][0]
         coord = pred_coord[idx]
+
         y_top = int(float(coord[0]) * image_size)
         x_left = int(float(coord[1]) * image_size)
         y_bottom = int(float(coord[2]) * image_size)
