@@ -5,10 +5,10 @@ from core.yolov4 import YOLO, decode, filter_boxes
 import core.utils as utils
 from core.config import cfg
 
-flags.DEFINE_string('weights',r"D:\Public\JHS\YOLO\weights\yolov4-custom-stitch-rot_final.weights", 'path to weights file')
-flags.DEFINE_string('output', r"D:\Public\JHS\YOLO\weights\pretrained_yolov4", 'path to output')
+flags.DEFINE_string('weights',r"D:\Public\JHS\Splash\psb_jitter0_shift_final.weights", 'path to weights file')
+flags.DEFINE_string('output', r"D:\Public\JHS\YOLO\converted_weighs", 'path to output')
 # flags.DEFINE_boolean('tiny', False, 'is yolo-tiny or not')
-flags.DEFINE_integer('num_detection_layer', 3, '3: yolov4 2:yolov4-tiny  3:custom model')
+flags.DEFINE_integer('num_detection_layer', 1, '3: yolov4 2:yolov4-tiny 1:custom model')
 flags.DEFINE_integer('input_size', 640, 'define input size of export model')
 flags.DEFINE_float('score_thres', 0.2, 'define score threshold')
 flags.DEFINE_string('framework', 'tf', 'define what framework do you want to convert (tf, trt, tflite)')
@@ -22,7 +22,9 @@ def save_tf():
   bbox_tensors = []
   prob_tensors = []
   if FLAGS.num_detection_layer == 1:  # yolo-custom
-    pass
+    output_tensors = decode(feature_maps[0], FLAGS.input_size // 32, NUM_CLASS, STRIDES, ANCHORS, 0, XYSCALE, FLAGS.framework)
+    bbox_tensors.append(output_tensors[0])
+    prob_tensors.append(output_tensors[1])
   elif FLAGS.num_detection_layer == 2:  # yolo-tiny
     for i, fm in enumerate(feature_maps):
       if i == 0:
