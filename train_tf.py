@@ -23,21 +23,18 @@ import matplotlib.pyplot as plt
 
 import cv2
 
+
 flags.DEFINE_string('model', 'yolov4', 'yolov4, yolov3')
 flags.DEFINE_string('weights', './scripts/yolov4.weights', 'pretrained weights')
 flags.DEFINE_integer('num_detection_layer', 1, '3: yolov4 2:yolov4-tiny  3:custom model')
 
 # 0 for YOLOv4, 1 for yolo-tiny 2 for custom yolo
 
-
 def main(_argv):
-    # physical_devices = tf.config.experimental.list_physical_devices('GPU')
-    # if len(physical_devices) > 0:
-    #     tf.config.experimental.set_memory_growth(physical_devices[0], True)
     input_channel = 3
     patience = 30
     steps_in_epoch = 0
-    epoch_loss = np.inf
+    epoch_loss = 0
     prev_minloss = np.inf
 
     trainset = DatasetTF(FLAGS, input_channel, is_training=True)
@@ -128,7 +125,7 @@ def main(_argv):
             # optimizing process
             for i in range(len(freeze_layers)):
                 conv, pred = pred_result[i * 2], pred_result[i * 2 + 1]
-                loss_items = compute_loss(pred, conv, target[i][0], target[i][1], STRIDES=STRIDES, NUM_CLASS=NUM_CLASS,
+                loss_items = compute_loss(pred, conv, target[i][0], target[i][1], STRIDES=STRIDES, NUM_CLASS=NUM_CLASS,     # label, bbox
                                           IOU_LOSS_THRESH=IOU_LOSS_THRESH, i=i)
                 ciou_loss += loss_items[0]
                 conf_loss += loss_items[1]
@@ -221,35 +218,73 @@ def main(_argv):
         for i in range(trainset.steps_for_train):
             data = it.get_next()
 
-            ## check input train images
+            ### check input train images
+            # image_data = data[0]
+            # label_data = np.array(data[1])
+            #
+            # bboxes_list = np.array(label_data[0][1])
+            # label_list = np.array(label_data[0][0])
+            # for batch_idx, bboxes in enumerate(bboxes_list):
+            #     class_inds = []
+            #     check = np.array(image_data[batch_idx]).reshape(cfg.TRAIN.INPUT_SIZE, cfg.TRAIN.INPUT_SIZE, 3)
+            #     # print(r"D:\tf_data_\preprocessed_{}.npy".format(batch_idx))
+            #     # np.save(r"D:\tf_data_\image_{}.npy".format(batch_idx), check)
+            #     # np.save(r"D:\tf_data_\preprocessed_{}.npy".format(batch_idx), label_list[batch_idx])
+            #     # np.save(r"D:\tf_data_\bboxes_{}.npy".format(batch_idx), bboxes_list[batch_idx])
+            #     label = np.array(label_list[batch_idx])
+            #
+            #     class_ = label[...,5:]
+            #     class_ = np.array(class_).flatten()
+            #     class_ = np.where(class_ > 0.1, class_, 0)
+            #
+            #     for class_idx, class_label in enumerate(class_):
+            #         # print("class_label:{}".format(class_label))
+            #         if class_label > 0:
+            #             class_inds.append(class_idx % cfg.YOLO.NUM_CLASSES)
+            #
+            #     bboxes = np.array(bboxes)
+            #     for bbox_idx, bbox in enumerate(bboxes):
+            #         half_h = bbox[3] / 2
+            #         half_w = bbox[2] / 2
+            #
+            #         if half_h + half_w > 0:
+            #             cv2.rectangle(check, (int(bbox[0] - half_w), int(bbox[1] - half_h)),
+            #                           (int(bbox[0] + half_w), int(bbox[1] + half_h)), color=(0, 255, 0), thickness=3)
+            #             cv2.putText(check, text="{}".format(class_inds),
+            #                         org=(int(bbox[0] + half_w)-10, int(bbox[1] + half_h)-30), thickness=2, color=(0, 255, 0),
+            #                         fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.7)
+            #
+            #     cv2.imshow("check_aug", check)
+            #     cv2.waitKey(0)
+            #     cv2.destroyAllWindows()
+            # cv2.imwrite(os.path.join(r"D:\Public\JHS\SIMPLE_DATA_INPUT_CHECK", "{}.jpg".format(batch_idx)), check*255)
 
+            train_loss = train_step(data[0], data[1])
+            # epoch_loss += train_loss
+
+
+        # for i in range(testset.steps_for_train):
+        #     data = it_test.get_next()
+        #     test_step(data[0], data[1])
+
+            # CHECK TEST
             # image_data = data[0]
             # label_data = data[1]
             # bboxes_list = label_data[0][1]
             #
-            # print("bboxes_list",bboxes_list)
-            # print("bboxes_list shape", np.array(bboxes_list).shape)
             # for batch_idx, bboxes in enumerate(bboxes_list):
             #     check = np.array(image_data[batch_idx]).reshape(640, 640, 3)
             #     for bbox in bboxes:
-            #         # print("bbox:{}".format(bbox))
             #         half_h = bbox[3] / 2
             #         half_w = bbox[2] / 2
-            #
             #         # bbox_upper_left = (bbox[0])
             #         if np.sum(bbox) > 0:
             #             cv2.rectangle(check, (bbox[0] - half_w, bbox[1] - half_h),(bbox[0] + half_w,bbox[1]+half_h), color=(0,255,0), thickness=3)
-            #     cv2.imshow("check_aug", check)
+            #     cv2.imshow("check_aug TEST", check)
             #     cv2.waitKey(0)
             #     cv2.destroyAllWindows()
 
-            train_loss = train_step(data[0], data[1])
-            epoch_loss += train_loss
 
-
-        for i in range(trainset.steps_for_train):
-            data = it_test.get_next()
-            test_step(data[0], data[1])
         # for image_data, target in testset:
         #     test_step(image_data, target)
 
@@ -279,7 +314,7 @@ def main(_argv):
 
         if len(loss_tracker) > patience:
             print("check loss_tracker len:{}".format(len(loss_tracker)))
-            if loss_tracker[0] > np.min(loss_tracker[1:]):
+            if loss_tracker[0] > loss_tracker[-1]:
                 loss_tracker.pop(0)
             else:
                 print("total loss didn't decreased during {} epochs. train stop".format(patience))
@@ -290,11 +325,11 @@ def main(_argv):
         steps_in_epoch = 0
         """
 
-        if epoch % 1000 == 0:
-            model.save("D:\ckeckpoint-epoch{}".format(epoch))
-            print("{} epoch model saved".format(epoch))
+        if (epoch+1) % 100 == 0:
+            model.save("D:\yolov4-tflite-train_tf-epoch{}".format(epoch+1))
+            print("{} epoch model saved".format(epoch+1))
             print("consumed time: {}".format(time.time() - start))
-
+    model.save(r"D:\yolov4-tflite-train_tf-last")
 
 if __name__ == '__main__':
     try:
