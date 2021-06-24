@@ -34,14 +34,20 @@ flags.DEFINE_float('score', 0.25, 'score threshold')
 # flags.DEFINE_string('weights', r'D:\ckeckpoint\210413_custom','path to weights file')
 
 # detection시 수정
-flags.DEFINE_string('weights', r"D:/checkpoint-epoch5000",'path to weights file')
+converted_weight = r"D:\Public\JHS\YOLO\converted_weighs"   # yolo-custom-tiny 모델 pb 변환
+# trained_np = r"D:\checkpoint\notf_ckeckpoint-epoch500_ok"
+trained_tf = r"D:\yolov4-tflite-train_tf-epoch1000"
+trained_np = r"D:\checkpoint\notf_ckpt-last"
+
+flags.DEFINE_string('weights', trained_tf,'path to weights file')
 flags.DEFINE_string('save_result_img', r"./data/detection/tfdata", 'folder to save result')
 flags.DEFINE_boolean('use_trainres', True, "false for detect using converted weight(weights->pb) / True for training from scratch")
 flags.DEFINE_integer('size', 640, 'resize images to')
 flags.DEFINE_integer('num_detection_layer', 1, "3:yolov4 2:yolo-tiny 1:custom model")  # 디폴트 custom model
-flags.DEFINE_string('image', r"./data/detection", 'path to input image (.bmp면 하나만 detect ,폴더명이면 해당 폴더 이미지 전부')
-flags.DEFINE_boolean('save_multiple', True, 'detection 결과 한꺼번에 여러개 보려면 True')
-# flags.DEFINE_string('output', r"...\test_result", 'path to output image')
+# flags.DEFINE_string('image', r"D:\Public\JHS\SIMPLE_DATA_TEST", 'path to input image (.bmp면 하나만 detect ,폴더명이면 해당 폴더 이미지 전부')
+flags.DEFINE_string('image', r".\data\testtest", 'path to input image (.bmp면 하나만 detect ,폴더명이면 해당 폴더 이미지 전부')
+# flags.DEFINE_string('image', r"D:\Public\JHS\Splash\OD\yolo\test", 'path to input image (.bmp면 하나만 detect ,폴더명이면 해당 폴더 이미지 전부')
+flags.DEFINE_boolean('save_multiple', True, 'detection 결과 한꺼번에 여러개 보려면 True')  # convert weight의 경우 multiple 결과 이상함
 
 
 def nms_convertedw(boxes, num_classes, iou_threshold=0.5, score_threshold=0.25,max_boxes_per_class=50):
@@ -120,10 +126,8 @@ def nms_convertedw(boxes, num_classes, iou_threshold=0.5, score_threshold=0.25,m
     return bboxes_coord, bboxes_scores, bboxes_classes
 
 def nms(boxes, num_classes, iou_threshold=0.5, score_threshold=0.25,max_boxes_per_class=50):
-    # batch, feath, featw, num_anchors, xywhcp = tf.keras.backend.int_shape(boxes)  # for train from scratch
-    batch, feath, featw, num_anchors, xywhcp = tf.keras.backend.int_shape(boxes) # for yolov4 pretrained weights
+    batch, feath, featw, num_anchors, xywhcp = tf.keras.backend.int_shape(boxes)
 
-    # print("tf.keras.backend.int_shape(boxes) :{}".format(tf.keras.backend.int_shape(boxes) ))
     boxes = np.array(boxes).reshape(1, -1, xywhcp)  # (batch, -1, xywhcp)
     boxes_conf = boxes[..., 4:5]
     boxes_classprob = boxes[..., 5:]
@@ -212,6 +216,7 @@ def main(_argv):
     if not os.path.exists(FLAGS.save_result_img):
         os.makedirs(FLAGS.save_result_img)
 
+
     images_path, images_data = utils.load_multiple_img(image_path, input_size, FLAGS.save_multiple)
 
     if FLAGS.framework == 'tflite':
@@ -236,19 +241,16 @@ def main(_argv):
         batch_data = tf.constant(images_data)
         pred_bbox = infer(batch_data)
 
-        image_size = 640
-
         for key, value in pred_bbox.items():
             print("key:{}".format(key))
             # for custom model
-            if FLAGS.use_trainres == True and key[:5] == "tf_op":   # key는 model.summary의 마지막 layer
-
+            if FLAGS.use_trainres == True  and key[:5] == "tf_op":  #_layer_concat10":   # key는 model.summary의 마지막 layer # and key == "tf.concat_9": #
                 if FLAGS.save_multiple == True:
                     for idx in range(len(images_data)):
                         bboxes_coord, bboxes_scores, bboxes_classes = nms(tf.expand_dims(value[idx], axis=0), num_classes=cfg.YOLO.NUM_CLASSES)
-                        thres_score = 0.6
-
-                        image = utils.draw_bbox_trainw(images_data[idx], image_size, bboxes_coord, bboxes_classes, bboxes_scores, thres_score)
+                        thres_score = 0.1
+                        print(bboxes_classes)
+                        image = utils.draw_bbox_trainw(images_data[idx], input_size, bboxes_coord, bboxes_classes, bboxes_scores, thres_score)
 
                         # check result image and save
                         cv2.imshow("result", image)
@@ -257,8 +259,8 @@ def main(_argv):
                         cv2.imwrite(os.path.join(FLAGS.save_result_img, "{}".format(os.path.basename(images_path[idx]))), image * 255.0)
                 else:
                     bboxes_coord, bboxes_scores, bboxes_classes = nms(value, num_classes=cfg.YOLO.NUM_CLASSES)
-                    image = utils.draw_bbox_trainw(images_data, image_size, bboxes_coord , bboxes_classes,  bboxes_scores)
-                    image = np.reshape(image, (input_size, input_size, 3))
+                    image = utils.draw_bbox_trainw(images_data, input_size, bboxes_coord , bboxes_classes,  bboxes_scores)
+                    # image = np.reshape(image, (input_size, input_size, 3))
 
                     # check result image and save
                     cv2.imshow("result", image)
@@ -267,15 +269,60 @@ def main(_argv):
                     cv2.imwrite(os.path.join(FLAGS.save_result_img, os.path.basename(images_path)), image)
 
             elif FLAGS.use_trainres == False:  # for pretrained weights (.weights -> .pb by saved_model.py) 그 결과
-                bboxes_coord, bboxes_scores, bboxes_classes = nms_convertedw(value, num_classes=cfg.YOLO.NUM_CLASSES)
-                image = utils.draw_bbox_convertedw(images_data, image_size, bboxes_coord, bboxes_classes, bboxes_scores)
-                image = np.reshape(image, (input_size, input_size, 3))
+                if FLAGS.save_multiple == True:
+                    print("이상함;;")
+                    # print("value for multiple:{}".format(value))
+                    # for idx in range(len(images_data)):
+                    #     boxes = value[idx:idx+1, :, 0:4]
+                    #     pred_conf = value[idx:idx+1, :, 4:]
+                    #
+                    #     boxes, scores, classes, valid_detections = tf.image.combined_non_max_suppression \
+                    #             (
+                    #             boxes=tf.reshape(boxes, (tf.shape(boxes)[0], -1, 1, 4)),
+                    #             scores=tf.reshape(
+                    #                 pred_conf, (tf.shape(pred_conf)[0], -1, tf.shape(pred_conf)[-1])),
+                    #             max_output_size_per_class=50,
+                    #             max_total_size=50,
+                    #             iou_threshold=FLAGS.iou,
+                    #             score_threshold=FLAGS.score
+                    #         )
+                    #     pred_bbox = [boxes.numpy(), scores.numpy(), classes.numpy(), valid_detections.numpy()]
+                    #     image = utils.draw_bbox(images_data[idx], pred_bbox)
+                    #     cv2.imshow("result", image)
+                    #     cv2.waitKey(0)
+                    #     cv2.destroyAllWindows()
+                else:
+                    boxes = value[:, :, 0:4]
+                    pred_conf = value[:, :, 4:]
 
-                # check result image and save
-                cv2.imshow("result", image)
-                cv2.waitKey(0)
-                cv2.destroyAllWindows()
-                cv2.imwrite(os.path.join(FLAGS.save_result_img, os.path.basename(images_path)), image)
+                    boxes, scores, classes, valid_detections = tf.image.combined_non_max_suppression \
+                            (
+                            boxes=tf.reshape(boxes, (tf.shape(boxes)[0], -1, 1, 4)),
+                            scores=tf.reshape(
+                                pred_conf, (tf.shape(pred_conf)[0], -1, tf.shape(pred_conf)[-1])),
+                            max_output_size_per_class=50,
+                            max_total_size=50,
+                            iou_threshold=FLAGS.iou,
+                            score_threshold=FLAGS.score
+                        )
+                    pred_bbox = [boxes.numpy(), scores.numpy(), classes.numpy(), valid_detections.numpy()]
+                    image = utils.draw_bbox(images_data[0], pred_bbox)
+                    cv2.imshow("result", image)
+                    cv2.waitKey(0)
+                    cv2.destroyAllWindows()
+
+
+                    # bboxes_coord, bboxes_scores, bboxes_classes = nms_convertedw(value,
+                    #                                                              num_classes=cfg.YOLO.NUM_CLASSES)
+                    # image = utils.draw_bbox_convertedw(images_data, input_size, bboxes_coord, bboxes_classes,
+                    #                                    bboxes_scores)
+                    # image = np.reshape(image, (input_size, input_size, 3))
+                    #
+                    ## check result image and save
+                    # cv2.imshow("result", image)
+                    # cv2.waitKey(0)
+                    # cv2.destroyAllWindows()
+                    # cv2.imwrite(os.path.join(FLAGS.save_result_img, os.path.basename(images_path)), image)
 
                 """
                 ## 기존 - nms 이상하게 나옴 (stitch pretrained yolov4)
