@@ -176,7 +176,7 @@ def YOLOv4_more_tiny(input_layer, NUM_CLASS):
 
     conv = common.convolutional(conv, (1, 1, 512, 256))
 
-    conv = common.convolutional(conv, (1, 1, 256, 512))
+    conv = common.convolutional(conv, (3, 3, 256, 512))
 
     conv_mbbox = common.convolutional(conv, (1, 1, 512, 3 * (NUM_CLASS + 5)), activate=False, bn=False)  #256
 
