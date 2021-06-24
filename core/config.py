@@ -13,7 +13,8 @@ __C.YOLO                      = edict()
 
 __C.YOLO.NUM_YOLOLAYERS       = 1
 __C.YOLO.NUM_CLASSES          = 3
-__C.YOLO.CLASSES              = r"./scripts/yolo_custom/obj.names"
+__C.YOLO.CLASSES              = r".\scripts\yolo_custom\obj.names"
+# __C.YOLO.CLASSES              = r"C:\Users\PrecisionT3500\PycharmProjects\pythonProject\venv\tensorflow-yolov4-tflite-master\scripts\yolo_custom\obj.names"
 __C.YOLO.NUM_ANCHORS          = 3
 __C.YOLO.ANCHORS              = [33, 55,  56, 35,  47, 58,  60, 51,  56, 61,  52, 76,  76, 52,  80, 74,  79, 85]
 __C.YOLO.ANCHORS_V3           = [10,13, 16,30, 33,23, 30,61, 62,45, 59,119, 116,90, 156,198, 373,326]
@@ -33,20 +34,16 @@ __C.YOLO.IOU_LOSS_THRESH      = 0.5
 # Train options
 __C.TRAIN                     = edict()
 
-__C.TRAIN.ANNOT_PATH          = r"./scripts/yolo_custom/train_.txt"      # 학습시킬 train 이미지 경로
-__C.TRAIN.BATCH_SIZE          = 2
-# __C.TRAIN.SUBDIVISION         = 4
-# __C.TRAIN.MINI_BATCH_SIZE      = __C.TRAIN.BATCH_SIZE // __C.TRAIN.SUBDIVISION
-# __C.TRAIN.INPUT_SIZE        = [320, 352, 384, 416, 448, 480, 512, 544, 576, 608]
+__C.TRAIN.ANNOT_PATH          = r".\scripts\yolo_custom\train.txt"   # 학습시킬 train 이미지 경로
+__C.TRAIN.BATCH_SIZE          = 32
 __C.TRAIN.INPUT_SIZE          = 640
 __C.TRAIN.DATA_AUG            = True
-__C.TRAIN.MOSAIC_AUG          = False
-__C.TRAIN.LR_INIT             = 0.00261  #1e-3
-__C.TRAIN.LR_END              = 1e-6
-__C.TRAIN.WARMUP_EPOCHS       = 200
-__C.TRAIN.FISRT_STAGE_EPOCHS    = 4800
-__C.TRAIN.SECOND_STAGE_EPOCHS   = 1200
-
+__C.TRAIN.LR_INIT             = 0.00261
+__C.TRAIN.LR_END              = 1e-4   #1e-6
+__C.TRAIN.WARMUP_EPOCHS       = 40   # 40
+__C.TRAIN.FISRT_STAGE_EPOCHS    = 1200
+__C.TRAIN.SECOND_STAGE_EPOCHS   = 1600 #400
+# __C.TRAIN.MOSAIC_AUG          = False
 
 
 # TEST options
@@ -54,7 +51,7 @@ __C.TEST                      = edict()
 
 __C.TEST.ANNOT_PATH           = r"./scripts/yolo_custom/test.txt"  # 학습 중 test 이미지 경로
 __C.TEST.BATCH_SIZE           = 2
-__C.TEST.INPUT_SIZE           = 640
+__C.TEST.INPUT_SIZE           = 320
 __C.TEST.DATA_AUG             = False
 # __C.TEST.DECTECTED_IMAGE_PATH = r"D:\ckeckpoint\result"
 __C.TEST.CONF_THRESHOLD       = 0.45
