@@ -3,28 +3,34 @@ from absl.flags import FLAGS
 import os
 import shutil
 import tensorflow as tf
+
+try:
+    physical_devices = tf.config.experimental.list_physical_devices('GPU')
+    if len(physical_devices) > 0:
+        tf.config.experimental.set_memory_growth(physical_devices[0], True)
+except RuntimeError:
+    print("Physical devices cannot be modified after being initialized")
+
 from core.yolov4 import YOLO, YOLOv4_more_tiny, decode, compute_loss, decode_train
 from core.dataset import Dataset
 from core.config import cfg
 import numpy as np
 from core import utils
-from core.utils import freeze_all, unfreeze_all, compute_map
+from core.utils import freeze_all, unfreeze_all
 import time
 import matplotlib.pyplot as plt
+
+import cv2
 
 
 flags.DEFINE_string('model', 'yolov4', 'yolov4, yolov3')
 flags.DEFINE_string('weights', './scripts/yolov4.weights', 'pretrained weights')
-# flags.DEFINE_boolean('tiny', False, 'yolo or yolo-tiny')
-flags.DEFINE_integer('num_detection_layer', 1, '3: yolov4 2:yolov4-tiny  3:custom model')
-flags.DEFINE_boolean('show_map', True, 'true 면 학습시 map계산해서 보여줌')
-# 0 for YOLOv4, 1 for yolo-tiny 2 for custom yolo
-# NUM_MINIBATCH = cfg.TRAIN.BATCH_SIZE // cfg.TRAIN.SUBDIVISION
+flags.DEFINE_integer('num_detection_layer', 1, '3: yolov4  |  2:yolov4-tiny  |  3:custom model')
+# flags.DEFINE_boolean('show_map', True, 'true 면 학습시 map계산해서 보여줌')
+
+
 
 def main(_argv):
-    # physical_devices = tf.config.experimental.list_physical_devices('GPU')
-    # if len(physical_devices) > 0:
-    #     tf.config.experimental.set_memory_growth(physical_devices[0], True)
     input_channel = 3
     patience = 30
     steps_in_epoch = 0
@@ -32,7 +38,7 @@ def main(_argv):
     prev_minloss = np.inf
 
     trainset = Dataset(FLAGS,input_channel, is_training=True)
-    testset = Dataset(FLAGS, input_channel, is_training=False)
+    # testset = Dataset(FLAGS, input_channel, is_training=False)
     logdir = "./data/log"
     isfreeze = False
     steps_per_epoch = len(trainset)
@@ -52,15 +58,12 @@ def main(_argv):
     IOU_LOSS_THRESH = cfg.YOLO.IOU_LOSS_THRESH
 
     freeze_layers = utils.load_freeze_layer(FLAGS.model, FLAGS.num_detection_layer)
-
     # feature_maps = YOLO(input_layer, NUM_CLASS, FLAGS.model, FLAGS.tiny)
     feature_maps = YOLOv4_more_tiny(input_layer, NUM_CLASS)
 
     bbox_tensors = []
     for i, fm in enumerate(feature_maps):        # fm shape: (None, featw, feath, filters)
-        # print("i:{}  XYSCALE shape:{}".format(i, np.array(XYSCALE).shape))
         bbox_tensor = decode_train(fm, cfg.TRAIN.INPUT_SIZE // 16, NUM_CLASS, STRIDES, ANCHORS, i, XYSCALE)
-        # print("@@@ bbox_tensor shape:{}".format(bbox_tensor))    # shape=(None, 40, 40, 3, 7)
         bbox_tensors.append(fm)
         bbox_tensors.append(bbox_tensor)
 
@@ -86,7 +89,6 @@ def main(_argv):
             bbox_tensors.append(bbox_tensor)
     elif cfg.YOLO.NUM_YOLOLAYERS == 1: # custom yolo
         bbox_tensors = []
-        # for i, fm in enumerate(feature_maps):
         bbox_tensor = decode_train(feature_maps[0], cfg.TRAIN.INPUT_SIZE // cfg.YOLO.STRIDES_CUSTOM[0], NUM_CLASS, STRIDES, ANCHORS, 0, XYSCALE)
         bbox_tensors.append(feature_maps[0])
         bbox_tensors.append(bbox_tensor)
@@ -155,6 +157,7 @@ def main(_argv):
             writer.flush()
             # return total_loss
 
+    @tf.function
     def test_step(image_data, target):
         with tf.GradientTape() as tape:
             pred_result = model(image_data, training=True)
@@ -225,13 +228,53 @@ def main(_argv):
 
 
         for image_data, target in trainset:
-            cv2.imshow(target)
+            # bboxes_list = target[0][1]
+            # label_data = target[0][0]
+            #
+            # for batch_idx, bboxes in enumerate(bboxes_list):
+            #     # print("bboxes:{}".format(bboxes))
+            #     class_inds = []
+            #     check = np.array(image_data[batch_idx]).reshape(cfg.TRAIN.INPUT_SIZE, cfg.TRAIN.INPUT_SIZE, 3)
+            #     # print(r"D:\tf_data_not\preprocessed_{}.npy".format(batch_idx))
+            #     # np.save(r"D:\tf_data_not\image_{}.npy".format(batch_idx), check)
+            #     # np.save(r"D:\tf_data_not\preprocessed_{}.npy".format(batch_idx), label_data[batch_idx])
+            #     # np.save(r"D:\tf_data_not\bboxes_{}.npy".format(batch_idx), bboxes)
+            #     label = label_data[batch_idx]
+            #     label_class = label[...,5:]
+            #     # print("label shape:{}".format(np.array(label).shape))
+            #
+            #     for line_label in label_class:
+            #         if np.sum(line_label) > 0:
+            #             print(line_label)
+            #     class_ = np.array(label[..., 5:]).flatten()
+            #     class_ = np.where(class_>0.1, class_, 0)
+            #     for class_idx, class_label in enumerate(class_):
+            #         if class_label > 0:
+            #             class_inds.append(class_idx % cfg.YOLO.NUM_CLASSES)
+            #
+            #     for bbox_idx, bbox in enumerate(bboxes):
+            #         half_h = bbox[3] / 2
+            #         half_w = bbox[2] / 2
+            #
+            #         if np.sum(bbox) > 0:
+            #             # print("class:{}".format(class_inds))
+            #             cv2.rectangle(check, (int(bbox[0] - half_w), int(bbox[1] - half_h)),
+            #                           (int(bbox[0] + half_w), int(bbox[1] + half_h)), color=(0, 255, 0), thickness=3)
+            #             cv2.putText(check, text="{}".format(class_inds[bbox_idx]),
+            #                         org=(int(bbox[0] + half_w)-10, int(bbox[1] + half_h)-30), thickness=2, color=(0, 255, 0),
+            #                         fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.7)
+            #
+            #     cv2.imshow("check_aug", check)
+            #     cv2.waitKey(0)
+            #     cv2.destroyAllWindows()
+            #     cv2.imwrite(os.path.join(r"D:\Public\JHS\SIMPLE_DATA_INPUT_CHECK", "{}.jpg".format(batch_idx)), check*255)
+
             train_step(image_data, target)
 
-        for image_data, target in testset:
-            test_step(image_data, target)
+        # for image_data, target in testset:
+        #     test_step(image_data, target)
 
-        # for loss graph
+        ### for loss graph
         """
         if steps_in_epoch >= steps_per_epoch:
             loss_tracker.append(losses_in_epoch / steps_per_epoch)
@@ -268,10 +311,10 @@ def main(_argv):
         # else:
         #     epoch_loss += train_loss
 
-        if epoch % 100 == 0:
-            model.save("D:\ckeckpoint")
+        if (epoch+1) % 500 == 0:
+            model.save(r"D:\notf_ckpt-epoch{}".format(epoch))
             print("{} epoch model saved".format(epoch))
-
+    model.save(r"D:\notf_ckpt-last")
 
 if __name__ == '__main__':
     try:
