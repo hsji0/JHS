@@ -146,6 +146,8 @@ class DatasetTF(object):
                 label_path = os.path.splitext(image_path)[0] + ".txt"
                 self._train_images.append(image_path)
                 self._train_labels.append(label_path)
+        # self._train_images = self._train_images[5000:]
+        # self._train_labels= self._train_labels[5000:]
 
     def load_annotations(self):
         with open(self.annot_path, "r") as f:
@@ -188,7 +190,7 @@ class DatasetTF(object):
     @tf.function
     def _load_images(self, image_fullpath):
         img = tf.io.read_file(image_fullpath)
-        img = tf.io.decode_image(img, channels=0)
+        img = tf.io.decode_image(img)  #, channels=0)
         img = tf.cond(tf.shape(img)[2] == 1 and self._input.c == 3, lambda: tf.image.grayscale_to_rgb(img), lambda: img)
         img = tf.cond(tf.shape(img)[2] == 3 and self._input.c == 1, lambda: tf.image.rgb_to_grayscale(img), lambda: img)
         img.set_shape(self._input.shape)  # 실제 이미지 크기랑 상관 없음
@@ -197,15 +199,18 @@ class DatasetTF(object):
     @tf.function
     def _load_labels(self, label_fullpath):
         label = tf.io.read_file(label_fullpath)
-        boxes = tf.strings.to_number(tf.strings.split(label))
-        boxes = tf.reshape(boxes, (len(boxes) // 5, 5))
-        # class_num, center_x, center_y, half_w, half_h = tf.split(boxes, 5, 1)
-        class_num, center_x, center_y, width_, height_ = tf.split(boxes, 5, 1)
+        if label == '':
+            bboxes = tf.constant([[0,0,0,0,-1]], dtype=tf.float32)
+        else:
+            boxes = tf.strings.to_number(tf.strings.split(label))
+            boxes = tf.reshape(boxes, (len(boxes) // 5, 5))
+            # class_num, center_x, center_y, half_w, half_h = tf.split(boxes, 5, 1)
+            class_num, center_x, center_y, width_, height_ = tf.split(boxes, 5, 1)
 
-        half_w, half_h = width_ / 2, height_ / 2
-        bboxes = tf.concat([center_x - half_w, center_y - half_h, center_x + half_w, center_y + half_h, class_num], 1)
-        bboxes = tf.multiply(bboxes, tf.constant([self._input.w, self._input.h, self._input.w, self._input.h, 1],
-                                                 dtype=tf.float32))
+            half_w, half_h = width_ / 2, height_ / 2
+            bboxes = tf.concat([center_x - half_w, center_y - half_h, center_x + half_w, center_y + half_h, class_num], 1)
+            bboxes = tf.multiply(bboxes, tf.constant([self._input.w, self._input.h, self._input.w, self._input.h, 1],
+                                                     dtype=tf.float32))
         return bboxes
 
     @tf.function
@@ -275,9 +280,9 @@ class DatasetTF(object):
         dataset = dataset.map(map_func=self._adjust_shape,  num_parallel_calls=AUTOTUNE)
 
         dataset = dataset.cache("")
-        dataset = dataset.shuffle(5000, reshuffle_each_iteration=True)
+        dataset = dataset.shuffle(16000, reshuffle_each_iteration=True)
         dataset = dataset.repeat()
-        dataset = dataset.batch(self.batch_size).prefetch(AUTOTUNE)
+        dataset = dataset.batch(self.batch_size).prefetch(AUTOTUNE)  # https://github.com/tensorflow/tensorflow/issues/32376
         return dataset
 
     def __iter__(self):
@@ -414,11 +419,29 @@ class DatasetTF(object):
         ]
 
         _, feath, featw, _, _ = np.array(label).shape
-        # len(label) == 1
-        # label[0].shape == (20,20,3,8)
 
         bboxes_xywh = [np.zeros((self.max_bbox_per_scale, 4)) for _ in range(self.num_detection_layers)]
         bbox_count = np.zeros((self.num_detection_layers,))
+
+        """
+        negative sample 처리
+        """
+        if np.cast[np.int](bboxes[0][4]) == -1:  # bbox_class_ind = np.cast[np.int](bboxes[0][4])
+            for i in range(cfg.YOLO.NUM_YOLOLAYERS):
+                if cfg.YOLO.NUM_YOLOLAYERS == 3:
+                    label_sbbox, label_mbbox, label_lbbox = label
+                    sbboxes, mbboxes, lbboxes = bboxes_xywh
+                    return label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes
+                elif cfg.YOLO.NUM_YOLOLAYERS == 2:
+                    label_mbbox, label_lbbox = label
+                    mbboxes, lbboxes = bboxes_xywh
+                    return label_mbbox, label_lbbox, mbboxes, lbboxes
+                elif cfg.YOLO.NUM_YOLOLAYERS == 1:
+                    label_mbbox = label
+                    label_mbbox = np.reshape(label_mbbox, [feath, featw, self.anchor_per_scale, 5 + self.num_classes])
+                    mbboxes = bboxes_xywh
+                    mbboxes = np.reshape(mbboxes, [-1, 4])
+                    return (tf.cast(image, tf.float32), tf.cast(label_mbbox, tf.float32), tf.cast(mbboxes, tf.float32))
 
         for bbox in bboxes:
             bbox_coor = bbox[:4]
@@ -440,10 +463,14 @@ class DatasetTF(object):
                 ],
                 axis=-1,
             )
+            bbox_xywh = np.minimum(bbox_xywh, self.train_input_size-1)
+            bbox_xywh = np.maximum(bbox_xywh, 0)
 
             bbox_xywh_scaled = (
                     1.0 * bbox_xywh[np.newaxis, :] / self.strides[:, np.newaxis]
             )
+            # bbox_xywh_scaled = np.minimum(bbox_xywh_scaled, 19)
+            # bbox_xywh_scaled = np.maximum(bbox_xywh_scaled, 0)
 
             iou = []
             exist_positive = False
@@ -484,6 +511,7 @@ class DatasetTF(object):
                     bbox_count[i] += 1
 
                     exist_positive = True
+
 
             if not exist_positive:
                 best_anchor_ind = np.argmax(np.array(iou).reshape(-1), axis=-1)
