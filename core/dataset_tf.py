@@ -469,8 +469,8 @@ class DatasetTF(object):
             bbox_xywh_scaled = (
                     1.0 * bbox_xywh[np.newaxis, :] / self.strides[:, np.newaxis]
             )
-            # bbox_xywh_scaled = np.minimum(bbox_xywh_scaled, 19)
-            # bbox_xywh_scaled = np.maximum(bbox_xywh_scaled, 0)
+            bbox_xywh_scaled = np.minimum(bbox_xywh_scaled, 19)
+            bbox_xywh_scaled = np.maximum(bbox_xywh_scaled, 0)
 
             iou = []
             exist_positive = False
